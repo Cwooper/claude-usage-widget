@@ -18,6 +18,7 @@ ColumnLayout {
     property bool showLabel: true
     property bool showTick: true
     property real thickness: 0.1
+    property int spinDuration: 3200
 
     property bool themeColors: true
     property color underColor: Kirigami.Theme.positiveTextColor
@@ -169,7 +170,7 @@ ColumnLayout {
                 loops: Animation.Infinite
                 from: 0
                 to: 360
-                duration: 1200
+                duration: root.spinDuration
             }
 
             Connections {

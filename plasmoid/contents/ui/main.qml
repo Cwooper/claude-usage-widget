@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
@@ -25,6 +26,7 @@ PlasmoidItem {
     property var models: []
     property bool stale: false
     property bool everLoaded: false
+    property bool busy: false
 
     // Advances the pace marker and countdowns between probes, which are far
     // too expensive to run at display refresh rates.
@@ -55,6 +57,16 @@ PlasmoidItem {
         return gauge.pct / 100 - paceOf(gauge);
     }
 
+    // Guarded: connectSource on an already-connected source is a no-op, so a
+    // second click during a probe would look ignored rather than queued.
+    function refresh() {
+        if (busy) {
+            return;
+        }
+        busy = true;
+        probe.connectSource(probeCommand);
+    }
+
     function secondsLeft(gauge) {
         if (!gauge.resetsAt) {
             return 0;
@@ -74,6 +86,7 @@ PlasmoidItem {
 
         onNewData: function (source, data) {
             disconnectSource(source);
+            root.busy = false;
             if (data["exit code"] !== 0) {
                 root.stale = true;
                 return;
@@ -96,7 +109,7 @@ PlasmoidItem {
         running: true
         repeat: true
         triggeredOnStart: true
-        onTriggered: probe.connectSource(root.probeCommand)
+        onTriggered: root.refresh()
     }
 
     Timer {
@@ -158,6 +171,51 @@ PlasmoidItem {
         Layout.minimumHeight: Kirigami.Units.gridUnit * 8
         Layout.preferredWidth: Kirigami.Units.gridUnit * 16
         Layout.preferredHeight: Kirigami.Units.gridUnit * 10
+
+        Item {
+            id: refreshButton
+
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.margins: Kirigami.Units.smallSpacing
+            width: Kirigami.Units.iconSizes.small
+            height: width
+            z: 1
+            opacity: refreshArea.containsMouse || root.busy ? 1 : 0.35
+
+            Kirigami.Icon {
+                id: refreshIcon
+                anchors.fill: parent
+                source: "view-refresh"
+
+                RotationAnimator on rotation {
+                    running: root.busy
+                    loops: Animation.Infinite
+                    from: 0
+                    to: 360
+                    duration: 1200
+                }
+            }
+
+            Connections {
+                target: root
+                function onBusyChanged() {
+                    if (!root.busy) {
+                        refreshIcon.rotation = 0;
+                    }
+                }
+            }
+
+            MouseArea {
+                id: refreshArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.refresh()
+                QQC2.ToolTip.visible: refreshArea.containsMouse
+                QQC2.ToolTip.text: i18n("Refresh now")
+            }
+        }
 
         ColumnLayout {
             anchors.fill: parent

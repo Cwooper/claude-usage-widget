@@ -17,6 +17,9 @@ limit early.
 - **Bar** — output tokens per model family over the current weekly window,
   darkest (Fable) to lightest (Haiku).
 
+A refresh button sits in the top right, spinning while a probe is in flight.
+Until the first reading lands the rings show an indeterminate spinner.
+
 ## Requirements
 
 - Plasma 6 (developed against 6.7)
