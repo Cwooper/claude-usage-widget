@@ -20,10 +20,7 @@ Item {
         return sum;
     }
 
-    // One hue rather than four: these are slices of a single measure, and a
-    // categorical palette oversells the difference between them. Keyed by
-    // family, not by position, so a model keeps its shade as the mix shifts
-    // week to week.
+    // Keyed by family, not position, so a model keeps its shade as the mix shifts.
     readonly property color baseColor: "#d97757"
     readonly property var families: ["fable", "opus", "sonnet", "haiku"]
 
@@ -32,8 +29,7 @@ Item {
         if (rank < 0) {
             return Kirigami.Theme.disabledTextColor;
         }
-        // Qt.darker lightens below 1.0, so one expression walks the whole ramp
-        // from fable (darkest) to haiku (lightest).
+        // Qt.darker lightens below 1.0, so one expression spans the whole ramp.
         return Qt.darker(baseColor, 1.6 - rank * 0.3);
     }
 

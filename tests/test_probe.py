@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-"""Tests for the probe's parsing and aggregation.
+"""Tests for the probe's parsing and aggregation."""
 
-Run with: python3 -m unittest discover -s tests
-"""
-
+import importlib.machinery
 import importlib.util
 import unittest
 from datetime import date, datetime, timedelta
@@ -52,7 +50,6 @@ class ParseResetTest(unittest.TestCase):
         )
 
     def test_rolls_year_forward_across_new_year(self):
-        """A Jan reset seen from late December belongs to the next year."""
         now = datetime(2026, 12, 31, 22, 0, tzinfo=REYKJAVIK)
         got = probe.parse_reset("Jan 2, 9am", "Atlantic/Reykjavik", now)
         self.assertEqual(
@@ -80,6 +77,20 @@ class ParseResetTest(unittest.TestCase):
         now = datetime(2026, 8, 16, 23, 55, tzinfo=REYKJAVIK)
         with self.assertRaises(ValueError):
             probe.parse_reset("sometime next Tuesday", "Atlantic/Reykjavik", now)
+
+    def test_rejects_unusable_timezone(self):
+        """Falling back to local time would shift countdowns while looking fine."""
+        now = datetime(2026, 8, 16, 23, 55, tzinfo=REYKJAVIK)
+        with self.assertRaises(ValueError):
+            probe.parse_reset("Aug 17, 11am", "Not/AZone", now)
+
+    def test_accepts_a_naive_now(self):
+        got = probe.parse_reset("Aug 17, 11am", "Atlantic/Reykjavik",
+                                datetime(2026, 8, 16, 23, 55))
+        self.assertEqual(
+            datetime.fromtimestamp(got, REYKJAVIK),
+            datetime(2026, 8, 17, 11, 0, tzinfo=REYKJAVIK),
+        )
 
 
 class GaugeKeyTest(unittest.TestCase):
@@ -120,6 +131,35 @@ class ParseUsageTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             probe.parse_usage("Claude Code is not authenticated.", self.now)
 
+    def test_raises_when_only_the_session_line_is_missing(self):
+        """Otherwise the window that actually stops work vanishes silently."""
+        weekly_only = "\n".join(
+            line for line in USAGE_SAMPLE.splitlines()
+            if not line.startswith("Current session")
+        )
+        with self.assertRaises(ValueError):
+            probe.parse_usage(weekly_only, self.now)
+
+
+class ClaudeBreakdownsTest(unittest.TestCase):
+    def test_selects_the_claude_agent(self):
+        day = {"agents": [
+            {"agent": "codex", "modelBreakdowns": [{"modelName": "gpt", "outputTokens": 999}]},
+            {"agent": "claude", "modelBreakdowns": [{"modelName": "claude-opus-5",
+                                                     "outputTokens": 7}]},
+        ]}
+        self.assertEqual(probe.claude_breakdowns(day),
+                         [{"modelName": "claude-opus-5", "outputTokens": 7}])
+
+    def test_returns_nothing_when_claude_is_absent(self):
+        day = {"agents": [{"agent": "codex", "modelBreakdowns": [{"outputTokens": 5}]}]}
+        self.assertEqual(probe.claude_breakdowns(day), [])
+
+    def test_falls_back_to_the_unified_row(self):
+        day = {"modelBreakdowns": [{"modelName": "claude-opus-5", "outputTokens": 4}]}
+        self.assertEqual(probe.claude_breakdowns(day),
+                         [{"modelName": "claude-opus-5", "outputTokens": 4}])
+
 
 class FamilyTest(unittest.TestCase):
     def test_maps_dated_model_ids(self):
@@ -152,7 +192,6 @@ class AggregateModelsTest(unittest.TestCase):
         )
 
     def test_orders_by_family_not_by_size(self):
-        """Segment order must be stable so the bar does not reshuffle."""
         payload = {"daily": [{"modelBreakdowns": [
             {"modelName": "claude-haiku-4-5", "outputTokens": 900},
             {"modelName": "claude-sonnet-5", "outputTokens": 50},
@@ -184,10 +223,20 @@ class AggregateModelsTest(unittest.TestCase):
         self.assertEqual(probe.aggregate_models({"daily": []}), [])
         self.assertEqual(probe.aggregate_models({"daily": None}), [])
 
+    def test_excludes_other_agent_clis(self):
+        """Their tokens do not count against Claude's limit windows."""
+        payload = {"daily": [{"agents": [
+            {"agent": "claude", "modelBreakdowns": [{"modelName": "claude-opus-5",
+                                                     "outputTokens": 12}]},
+            {"agent": "codex", "modelBreakdowns": [{"modelName": "gpt-5",
+                                                    "outputTokens": 500}]},
+        ]}]}
+        self.assertEqual(probe.aggregate_models(payload),
+                         [{"name": "opus", "tokens": 12}])
+
 
 class WindowStartTest(unittest.TestCase):
     def test_derives_opening_date_from_the_weekly_gauge(self):
-        """The mix must cover the limit window, not ccusage's Monday-start week."""
         resets = datetime(2026, 8, 17, 11, 0).timestamp()
         gauges = [
             {"key": "session", "resetsAt": resets, "windowSeconds": 5 * 3600},

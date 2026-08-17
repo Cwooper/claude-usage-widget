@@ -4,9 +4,6 @@
 Prints a single JSON object to stdout. Values are cached so a failed probe
 (offline, npm registry down) degrades to the last good reading rather than a
 blank widget.
-
-The parsing functions take an injectable `now` and pure payload arguments so the
-subprocess calls stay confined to read_gauges/read_models; see tests/test_probe.py.
 """
 
 import json
@@ -19,6 +16,14 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 CACHE = os.path.expanduser("~/.cache/claude-usage.json")
+
+# Pinned to a major: an unpinned @latest re-resolves against the npm registry on
+# every poll, and a schema change would empty the bar rather than raise.
+CCUSAGE = "ccusage@^20"
+
+# ccusage reports every coding CLI it detects; only Claude's tokens count
+# against the limit windows the gauges show.
+CCUSAGE_AGENT = "claude"
 
 # /usage reports each window's reset time but not its length, and the pace
 # marker needs the length to know how far through the window we are.
@@ -59,10 +64,14 @@ def parse_reset(stamp, tzname, now=None):
     """'Aug 17, 12:20am' + 'Atlantic/Reykjavik' -> epoch seconds."""
     try:
         tz = ZoneInfo(tzname)
-    except Exception:
-        tz = None
+    except Exception as exc:
+        # Falling back to local time would shift every countdown by the offset
+        # while still looking healthy; fail loudly so main() records it instead.
+        raise ValueError("unusable timezone %r: %s" % (tzname, exc))
     if now is None:
         now = datetime.now(tz)
+    elif now.tzinfo is None:
+        now = now.replace(tzinfo=tz)
     norm = re.sub(r"\s+", " ", stamp.strip())
     # The stamp carries no year. Supply it rather than letting strptime default,
     # which is deprecated and mishandles Feb 29; a Dec -> Jan reset then lands in
@@ -102,6 +111,10 @@ def parse_usage(text, now=None):
         )
     if not gauges:
         raise ValueError("no usage lines in /usage output")
+    # A format change touching only the session line would otherwise drop the
+    # window that actually stops work, with the payload still reporting healthy.
+    if not any(g["key"] == "session" for g in gauges):
+        raise ValueError("no session gauge in /usage output")
     return gauges
 
 
@@ -116,6 +129,20 @@ def family(model_name):
     return model_name
 
 
+def claude_breakdowns(day):
+    """The Claude entry's model breakdowns from one --by-agent daily row.
+
+    Rows without an `agents` array predate that flag and are Claude-only.
+    """
+    agents = day.get("agents")
+    if not agents:
+        return day.get("modelBreakdowns", [])
+    for entry in agents:
+        if entry.get("agent") == CCUSAGE_AGENT:
+            return entry.get("modelBreakdowns", [])
+    return []
+
+
 def aggregate_models(payload):
     """Collapse ccusage daily buckets into one output-token total per family.
 
@@ -124,7 +151,7 @@ def aggregate_models(payload):
     """
     mix = {}
     for day in payload.get("daily") or []:
-        for entry in day.get("modelBreakdowns", []):
+        for entry in claude_breakdowns(day):
             fam = family(entry.get("modelName", ""))
             mix[fam] = mix.get(fam, 0) + entry.get("outputTokens", 0)
 
@@ -142,8 +169,8 @@ def read_models(since):
     over mid-morning, which would blank the bar for those hours.
     """
     payload = json.loads(
-        run(["npx", "-y", "ccusage@latest", "daily", "--json", "--since", since.isoformat()],
-            timeout=120)
+        run(["npx", "-y", CCUSAGE, "daily", "--json", "--by-agent",
+             "--since", since.isoformat()], timeout=120)
     )
     return aggregate_models(payload)
 
@@ -184,13 +211,17 @@ def main():
 
     try:
         result["gauges"] = read_gauges()
+        fresh_gauges = result["gauges"]
     except Exception as exc:
         result["gauges"] = cached.get("gauges", [])
+        # Cached reset times may be days stale, which would scope the model mix
+        # to a window that has since rolled over.
+        fresh_gauges = []
         result["stale"] = True
         result["errors"].append("gauges: %s" % exc)
 
     try:
-        result["models"] = read_models(window_start(result["gauges"]))
+        result["models"] = read_models(window_start(fresh_gauges))
     except Exception as exc:
         result["models"] = cached.get("models", [])
         result["stale"] = True

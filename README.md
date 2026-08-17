@@ -12,13 +12,10 @@ Arc behind the tick means you are coasting, arc past it means you will hit the
 limit early.
 
 - **Arc colour** — green under pace, amber up to 15 points over, red beyond.
-- **Tick colour** — white well under pace, blue tracking it, amber then red over.
+- **Tick colour** — theme text colour well under pace, blue tracking it, amber then red over.
 - **Centre** — percent used, with time until the window resets beneath it.
 - **Bar** — output tokens per model family over the current weekly window,
   darkest (Fable) to lightest (Haiku).
-
-Plasma's own System Monitor widgets already cover CPU, GPU, RAM, disk, network
-and temperatures; this only adds what they cannot reach.
 
 ## Requirements
 
@@ -58,11 +55,6 @@ and re-renders the countdowns and pace ticks every 30 seconds from the last
 reading. Readings are cached to `~/.cache/claude-usage.json`; if a probe fails,
 the widget dims and keeps showing the last good values rather than going blank.
 
-The model bar is scoped to the weekly window derived from the gauge's own reset
-time, not to `ccusage`'s Monday-start week. Those differ by however many hours
-separate midnight from the weekly reset, and using ccusage's buckets blanks the
-bar for that stretch every week.
-
 ### Known limits
 
 - `ccusage daily` buckets by day, so the window's opening day is counted whole
@@ -78,5 +70,3 @@ bar for that stretch every week.
 python3 -m unittest discover -s tests
 ```
 
-Covers the `/usage` text parsing, reset-stamp handling (missing year, New Year
-rollover, leap day), and the ccusage aggregation.

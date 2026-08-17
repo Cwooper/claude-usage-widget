@@ -24,11 +24,6 @@ PlasmoidItem {
     // too expensive to run at display refresh rates.
     property double now: 0
 
-    readonly property var labels: ({
-        "session": "session",
-        "week": "week"
-    })
-
     readonly property var sessionGauge: {
         for (const gauge of gauges) {
             if (gauge.key === "session") {
@@ -40,16 +35,18 @@ PlasmoidItem {
 
     readonly property var otherGauges: gauges.filter(gauge => gauge.key !== "session")
 
-    function labelFor(key) {
-        return labels[key] !== undefined ? labels[key] : key;
-    }
-
     function paceOf(gauge) {
         if (!gauge.windowSeconds || !gauge.resetsAt) {
             return 0;
         }
         const elapsed = gauge.windowSeconds - (gauge.resetsAt - root.now);
         return Math.max(0, Math.min(1, elapsed / gauge.windowSeconds));
+    }
+
+    // Mirrors Gauge's own `delta`; the panel ring ranks on it so the collapsed
+    // and expanded views cannot disagree about which window is worst.
+    function paceDelta(gauge) {
+        return gauge.pct / 100 - paceOf(gauge);
     }
 
     function secondsLeft(gauge) {
@@ -100,7 +97,7 @@ PlasmoidItem {
         if (!everLoaded) {
             return "Waiting for first reading...";
         }
-        const lines = gauges.map(g => labelFor(g.key) + ": " + g.pct + "% used, resets in "
+        const lines = gauges.map(g => g.key + ": " + g.pct + "% used, resets in "
                                  + Formatter.duration(secondsLeft(g)));
         if (models.length > 0) {
             lines.push("Output tokens this week: "
@@ -118,7 +115,7 @@ PlasmoidItem {
         readonly property var worst: {
             let pick = null;
             for (const gauge of root.gauges) {
-                if (!pick || gauge.pct > pick.pct) {
+                if (!pick || root.paceDelta(gauge) > root.paceDelta(pick)) {
                     pick = gauge;
                 }
             }
@@ -168,11 +165,12 @@ PlasmoidItem {
                 Gauge {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    // The session window is the one that actually stops work, so
-                    // it gets roughly double the diameter of the weekly pair.
-                    Layout.preferredWidth: 10
+                    // Equal stretch against a pair of gauges, so the session
+                    // window -- the one that actually stops work -- draws at
+                    // double their diameter.
+                    Layout.horizontalStretchFactor: 2
                     visible: root.sessionGauge !== null
-                    label: root.labelFor(root.sessionGauge ? root.sessionGauge.key : "")
+                    label: root.sessionGauge ? root.sessionGauge.key : ""
                     pct: root.sessionGauge ? root.sessionGauge.pct : 0
                     pace: root.sessionGauge ? root.paceOf(root.sessionGauge) : 0
                     secondsLeft: root.sessionGauge ? root.secondsLeft(root.sessionGauge) : 0
@@ -188,7 +186,7 @@ PlasmoidItem {
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.preferredWidth: 11
+                    Layout.horizontalStretchFactor: 2
                     spacing: Kirigami.Units.smallSpacing
 
                     Repeater {
@@ -199,7 +197,7 @@ PlasmoidItem {
 
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            label: root.labelFor(modelData.key)
+                            label: modelData.key
                             pct: modelData.pct
                             pace: root.paceOf(modelData)
                             secondsLeft: root.secondsLeft(modelData)

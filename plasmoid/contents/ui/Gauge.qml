@@ -15,8 +15,7 @@ ColumnLayout {
 
     spacing: 0
 
-    // Usage measured against time elapsed, not against the limit: 79% is fine
-    // six days into a week and alarming six hours in.
+    // Pace-relative: 79% is fine six days into a week, alarming six hours in.
     readonly property real delta: pct / 100 - Math.min(1, pace)
 
     readonly property color valueColor: delta <= 0 ? Kirigami.Theme.positiveTextColor
@@ -34,8 +33,6 @@ ColumnLayout {
                        1);
     }
 
-    // The tick states what the arc's colour implies: comfortably under pace,
-    // tracking it, or overspending.
     readonly property color tickColor: delta <= -0.05 ? Kirigami.Theme.textColor
                                      : delta <= 0.05 ? paceColor
                                      : delta <= 0.15 ? Kirigami.Theme.neutralTextColor
@@ -135,8 +132,7 @@ ColumnLayout {
                 visible: root.captions && ring.size >= 40
                 text: Formatter.duration(root.secondsLeft, ring.size < 96)
                 opacity: 0.55
-                // Shrinks to fit rather than overrunning the arc: the weekly
-                // rings are half the session ring's diameter.
+                // The weekly rings are half the session ring's diameter.
                 font.pixelSize: Math.max(8, ring.size * 0.13)
                 fontSizeMode: Text.HorizontalFit
                 minimumPixelSize: 7

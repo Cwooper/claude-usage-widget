@@ -1,6 +1,5 @@
 #!/bin/sh
 #
-# Symlink the probe and the plasmoid into the paths Plasma and PATH look at.
 # Symlinks rather than copies, so edits in the checkout take effect on the next
 # plasmashell restart without reinstalling.
 
