@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+"""Emit Claude Code limit gauges and the week's model mix as JSON, for the Plasma widget.
+
+Prints a single JSON object to stdout. Values are cached so a failed probe
+(offline, npm registry down) degrades to the last good reading rather than a
+blank widget.
+
+The parsing functions take an injectable `now` and pure payload arguments so the
+subprocess calls stay confined to read_gauges/read_models; see tests/test_probe.py.
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+CACHE = os.path.expanduser("~/.cache/claude-usage.json")
+
+# /usage reports each window's reset time but not its length, and the pace
+# marker needs the length to know how far through the window we are.
+WINDOW_SECONDS = {"session": 5 * 3600, "week": 7 * 86400}
+
+# Fixed order so the model bar does not reshuffle its segments between polls.
+FAMILIES = ("fable", "opus", "sonnet", "haiku")
+
+USAGE_LINE = re.compile(
+    r"Current\s+(session|week)\s*(?:\(([^)]*)\))?\s*:\s*"
+    r"(\d+)%\s*used.*?resets\s+"
+    r"([A-Za-z]{3}\s+\d{1,2},\s*\d{1,2}(?::\d{2})?\s*[apAP][mM])"
+    r"\s*\(([^)]+)\)"
+)
+
+
+def probe_env():
+    """plasmashell inherits a thin PATH; claude and npx live outside it."""
+    env = dict(os.environ)
+    extra = [os.path.expanduser("~/.local/bin"), "/usr/local/bin", "/usr/bin"]
+    parts = env.get("PATH", "").split(os.pathsep)
+    env["PATH"] = os.pathsep.join(extra + [p for p in parts if p not in extra])
+    return env
+
+
+def run(argv, timeout=60):
+    return subprocess.run(
+        argv,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=True,
+        env=probe_env(),
+    ).stdout
+
+
+def parse_reset(stamp, tzname, now=None):
+    """'Aug 17, 12:20am' + 'Atlantic/Reykjavik' -> epoch seconds."""
+    try:
+        tz = ZoneInfo(tzname)
+    except Exception:
+        tz = None
+    if now is None:
+        now = datetime.now(tz)
+    norm = re.sub(r"\s+", " ", stamp.strip())
+    # The stamp carries no year. Supply it rather than letting strptime default,
+    # which is deprecated and mishandles Feb 29; a Dec -> Jan reset then lands in
+    # the past and gets rolled forward.
+    for year in (now.year, now.year + 1):
+        dated = re.sub(r"^([A-Za-z]{3} \d{1,2}),", r"\1 %d," % year, norm)
+        for fmt in ("%b %d %Y, %I:%M%p", "%b %d %Y, %I%p"):
+            try:
+                dt = datetime.strptime(dated, fmt).replace(tzinfo=tz)
+            except ValueError:
+                continue
+            if dt >= now - timedelta(days=1):
+                return dt.timestamp()
+    raise ValueError("unparsable reset time: %r" % stamp)
+
+
+def gauge_key(kind, qualifier):
+    if kind == "session":
+        return "session"
+    if not qualifier or qualifier.lower().startswith("all"):
+        return "week"
+    return qualifier.strip().lower()
+
+
+def parse_usage(text, now=None):
+    """Gauge dicts from the text `claude -p /usage` prints."""
+    gauges = []
+    for kind, qualifier, pct, stamp, tzname in USAGE_LINE.findall(text):
+        kind = kind.lower()
+        gauges.append(
+            {
+                "key": gauge_key(kind, qualifier),
+                "pct": int(pct),
+                "resetsAt": parse_reset(stamp, tzname, now),
+                "windowSeconds": WINDOW_SECONDS[kind],
+            }
+        )
+    if not gauges:
+        raise ValueError("no usage lines in /usage output")
+    return gauges
+
+
+def read_gauges():
+    return parse_usage(run(["claude", "-p", "/usage"], timeout=90))
+
+
+def family(model_name):
+    for fam in FAMILIES:
+        if fam in model_name:
+            return fam
+    return model_name
+
+
+def aggregate_models(payload):
+    """Collapse ccusage daily buckets into one output-token total per family.
+
+    Output tokens, not totalTokens: cache reads dwarf everything else and would
+    make the bar a chart of cache hits rather than of work done.
+    """
+    mix = {}
+    for day in payload.get("daily") or []:
+        for entry in day.get("modelBreakdowns", []):
+            fam = family(entry.get("modelName", ""))
+            mix[fam] = mix.get(fam, 0) + entry.get("outputTokens", 0)
+
+    ordered = [f for f in FAMILIES if mix.get(f)]
+    ordered += sorted(k for k in mix if k not in FAMILIES and mix[k])
+    return [{"name": f, "tokens": mix[f]} for f in ordered]
+
+
+def read_models(since):
+    """Model mix since `since` (a date), to pair with the weekly limit gauge.
+
+    Day-bucketed, so the window's opening day is counted whole even though the
+    limit window opens partway through it. ccusage's own weekly buckets are not
+    usable here: they roll over at Monday midnight while the limit window rolls
+    over mid-morning, which would blank the bar for those hours.
+    """
+    payload = json.loads(
+        run(["npx", "-y", "ccusage@latest", "daily", "--json", "--since", since.isoformat()],
+            timeout=120)
+    )
+    return aggregate_models(payload)
+
+
+def window_start(gauges, now=None):
+    """Date the weekly limit window opened, for scoping the model mix."""
+    for gauge in gauges:
+        if gauge["windowSeconds"] == WINDOW_SECONDS["week"]:
+            opened = gauge["resetsAt"] - gauge["windowSeconds"]
+            return datetime.fromtimestamp(opened).date()
+    if now is None:
+        now = datetime.now()
+    return (now - timedelta(seconds=WINDOW_SECONDS["week"])).date()
+
+
+def load_cache():
+    try:
+        with open(CACHE) as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+
+
+def save_cache(payload):
+    try:
+        os.makedirs(os.path.dirname(CACHE), exist_ok=True)
+        tmp = CACHE + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(payload, fh)
+        os.replace(tmp, CACHE)
+    except Exception:
+        pass
+
+
+def main():
+    cached = load_cache()
+    result = {"ts": time.time(), "stale": False, "errors": []}
+
+    try:
+        result["gauges"] = read_gauges()
+    except Exception as exc:
+        result["gauges"] = cached.get("gauges", [])
+        result["stale"] = True
+        result["errors"].append("gauges: %s" % exc)
+
+    try:
+        result["models"] = read_models(window_start(result["gauges"]))
+    except Exception as exc:
+        result["models"] = cached.get("models", [])
+        result["stale"] = True
+        result["errors"].append("models: %s" % exc)
+
+    result["ok"] = bool(result["gauges"])
+    save_cache(result)
+    json.dump(result, sys.stdout)
+    sys.stdout.write("\n")
+
+
+if __name__ == "__main__":
+    main()

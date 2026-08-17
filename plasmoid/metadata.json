@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Cooper Morgan"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Claude Code limit windows and this week's model mix",
+        "EnabledByDefault": true,
+        "Icon": "utilities-system-monitor",
+        "Id": "dev.cwooper.claudeusage",
+        "License": "MIT",
+        "Name": "Claude Usage",
+        "Version": "1.0"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}
