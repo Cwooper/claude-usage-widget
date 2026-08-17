@@ -181,34 +181,19 @@ PlasmoidItem {
             width: Kirigami.Units.iconSizes.small
             height: width
             z: 1
-            opacity: refreshArea.containsMouse || root.busy ? 1 : 0.35
+            // Dimmed rather than animated while probing: a spinning arrow at any
+            // speed reads as frantic next to the ring spinner.
+            opacity: root.busy ? 0.2 : (refreshArea.containsMouse ? 1 : 0.35)
 
             Kirigami.Icon {
-                id: refreshIcon
                 anchors.fill: parent
                 source: "view-refresh"
-
-                RotationAnimator on rotation {
-                    running: root.busy
-                    loops: Animation.Infinite
-                    from: 0
-                    to: 360
-                    duration: 1200
-                }
-            }
-
-            Connections {
-                target: root
-                function onBusyChanged() {
-                    if (!root.busy) {
-                        refreshIcon.rotation = 0;
-                    }
-                }
             }
 
             MouseArea {
                 id: refreshArea
                 anchors.fill: parent
+                enabled: !root.busy
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.refresh()

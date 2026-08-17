@@ -18,7 +18,7 @@ ColumnLayout {
     property bool showLabel: true
     property bool showTick: true
     property real thickness: 0.1
-    property int spinDuration: 3200
+    property int spinDuration: 4400
 
     property bool themeColors: true
     property color underColor: Kirigami.Theme.positiveTextColor

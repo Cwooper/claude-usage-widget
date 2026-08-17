@@ -56,7 +56,7 @@ Item {
                 loops: Animation.Infinite
                 from: -shimmer.width
                 to: shimmer.parent.width
-                duration: 2800
+                duration: 3800
                 // Eases at both ends so the restart reads as a pause, not a snap.
                 easing.type: Easing.InOutQuad
             }
