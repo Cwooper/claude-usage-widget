@@ -12,7 +12,13 @@ import "formatter.js" as Formatter
 PlasmoidItem {
     id: root
 
-    readonly property string probeCommand: "$HOME/.local/bin/claude-usage-probe"
+    // Run through python3 rather than executing directly: a published .plasmoid
+    // installs from a zip, which does not carry the executable bit.
+    readonly property string probeCommand: {
+        const path = Qt.resolvedUrl("../bin/claude-usage-probe")
+                       .toString().replace(/^file:\/\//, "");
+        return "python3 '" + path + "'";
+    }
     readonly property int pollInterval: Plasmoid.configuration.pollMinutes * 60 * 1000
 
     property var gauges: []
@@ -50,8 +56,15 @@ PlasmoidItem {
     }
 
     function secondsLeft(gauge) {
+        if (!gauge.resetsAt) {
+            return 0;
+        }
         return Math.max(0, gauge.resetsAt - root.now);
     }
+
+    // Two blanks stand in for the weekly rings until the first reading, so the
+    // idle widget has the same skeleton as the loaded one.
+    readonly property var weeklyModel: everLoaded ? otherGauges : [{}, {}]
 
 
     P5Support.DataSource {
@@ -76,6 +89,7 @@ PlasmoidItem {
             }
         }
     }
+
 
     Timer {
         interval: root.pollInterval
@@ -132,6 +146,7 @@ PlasmoidItem {
             anchors.fill: parent
             anchors.margins: Kirigami.Units.smallSpacing
             captions: false
+            idle: !root.everLoaded
             opacity: root.stale ? 0.5 : 1
             pct: parent.worst ? parent.worst.pct : 0
             pace: parent.worst ? root.paceOf(parent.worst) : 0
@@ -144,17 +159,9 @@ PlasmoidItem {
         Layout.preferredWidth: Kirigami.Units.gridUnit * 16
         Layout.preferredHeight: Kirigami.Units.gridUnit * 10
 
-        PlasmaComponents.Label {
-            anchors.centerIn: parent
-            visible: !root.everLoaded
-            text: "Waiting for first reading..."
-            opacity: 0.6
-        }
-
         ColumnLayout {
             anchors.fill: parent
             anchors.margins: Kirigami.Units.smallSpacing
-            visible: root.everLoaded
             spacing: Kirigami.Units.largeSpacing
             opacity: root.stale ? 0.5 : 1
 
@@ -170,7 +177,9 @@ PlasmoidItem {
                     // window -- the one that actually stops work -- draws at
                     // double their diameter.
                     Layout.horizontalStretchFactor: 2
-                    visible: root.sessionGauge !== null && Plasmoid.configuration.showSessionRing
+                    visible: (root.sessionGauge !== null || !root.everLoaded)
+                             && Plasmoid.configuration.showSessionRing
+                    idle: !root.everLoaded
                     label: root.sessionGauge ? root.sessionGauge.key : ""
                     pct: root.sessionGauge ? root.sessionGauge.pct : 0
                     pace: root.sessionGauge ? root.paceOf(root.sessionGauge) : 0
@@ -180,7 +189,7 @@ PlasmoidItem {
                 Kirigami.Separator {
                     visible: Plasmoid.configuration.showSessionRing
                              && Plasmoid.configuration.showWeeklyRings
-                             && root.otherGauges.length > 0
+                             && root.weeklyModel.length > 0
                     Layout.fillHeight: true
                     Layout.topMargin: Kirigami.Units.smallSpacing
                     Layout.bottomMargin: Kirigami.Units.gridUnit
@@ -195,15 +204,16 @@ PlasmoidItem {
                     spacing: Kirigami.Units.smallSpacing
 
                     Repeater {
-                        model: root.otherGauges
+                        model: root.weeklyModel
 
                         StyledGauge {
                             required property var modelData
 
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            label: modelData.key
-                            pct: modelData.pct
+                            idle: !root.everLoaded
+                            label: modelData.key !== undefined ? modelData.key : ""
+                            pct: modelData.pct !== undefined ? modelData.pct : 0
                             pace: root.paceOf(modelData)
                             secondsLeft: root.secondsLeft(modelData)
                         }
@@ -214,6 +224,7 @@ PlasmoidItem {
             ModelBar {
                 visible: Plasmoid.configuration.showModelBar
                 Layout.fillWidth: true
+                idle: !root.everLoaded
                 models: root.models
                 baseColor: Plasmoid.configuration.modelBarColor
                 barHeight: Plasmoid.configuration.modelBarHeight

@@ -32,8 +32,8 @@ limit early.
 
 Then: right-click desktop → Add Widgets → "Claude Usage".
 
-The script copies `bin/claude-usage-probe` into `~/.local/bin` and `plasmoid/`
-into `~/.local/share/plasma/plasmoids/dev.cwooper.claudeusage`. Pass `--link` to
+The script copies `plasmoid/` into
+`~/.local/share/plasma/plasmoids/dev.cwooper.claudeusage`. Pass `--link` to
 symlink the checkout instead, so edits land without reinstalling — but remove the
 widget from your desktop first. plasmashell reloads an applet whenever its
 package changes, and reloading a half-saved file set segfaults it.
@@ -51,7 +51,8 @@ the two thresholds deciding how far over pace counts as over, and as well over.
 
 ## How it works
 
-`bin/claude-usage-probe` is the only thing that touches the network. It runs
+`plasmoid/contents/bin/claude-usage-probe` is the only thing that touches the
+network. It ships inside the package so a published widget carries it. It runs
 `claude -p /usage` for the gauges and `ccusage daily --since` for the model mix,
 and prints one JSON object:
 

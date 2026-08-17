@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-PROBE_PATH = Path(__file__).resolve().parent.parent / "bin" / "claude-usage-probe"
+PROBE_PATH = Path(__file__).resolve().parent.parent / "plasmoid" / "contents" / "bin" / "claude-usage-probe"
 
 _spec = importlib.util.spec_from_loader(
     "claude_usage_probe",

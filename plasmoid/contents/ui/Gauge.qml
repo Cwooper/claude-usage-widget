@@ -12,6 +12,7 @@ ColumnLayout {
     property real pace: 0
     property real secondsLeft: 0
     property bool captions: true
+    property bool idle: false
 
     property bool showCountdown: true
     property bool showLabel: true
@@ -64,6 +65,7 @@ ColumnLayout {
         Canvas {
             id: canvas
             anchors.fill: parent
+            visible: !root.idle
             antialiasing: true
 
             onPaint: {
@@ -80,6 +82,7 @@ ColumnLayout {
                 const top = -Math.PI / 2;
 
                 ctx.lineWidth = thickness;
+
 
                 ctx.beginPath();
                 ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
@@ -126,6 +129,52 @@ ColumnLayout {
                 function onTickColorChanged() { canvas.requestPaint(); }
                 function onShowTickChanged() { canvas.requestPaint(); }
                 function onThicknessChanged() { canvas.requestPaint(); }
+                function onIdleChanged() { canvas.requestPaint(); }
+            }
+        }
+
+        Canvas {
+            id: spinner
+            anchors.fill: parent
+            visible: root.idle
+            antialiasing: true
+
+            onPaint: {
+                const ctx = getContext("2d");
+                ctx.reset();
+
+                const cx = width / 2;
+                const cy = height / 2;
+                const thickness = Math.max(3, ring.size * root.thickness);
+                const radius = ring.size / 2 - thickness / 2 - 1;
+                if (radius <= 0) {
+                    return;
+                }
+                ctx.lineWidth = thickness;
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+                ctx.strokeStyle = Qt.alpha(Kirigami.Theme.textColor, 0.15);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius, -Math.PI / 2, 0);
+                ctx.strokeStyle = Kirigami.Theme.highlightColor;
+                ctx.stroke();
+            }
+
+            // Rotating the item is GPU-side; repainting the arc each frame is not.
+            RotationAnimator on rotation {
+                running: root.idle
+                loops: Animation.Infinite
+                from: 0
+                to: 360
+                duration: 1200
+            }
+
+            Connections {
+                target: root
+                function onThicknessChanged() { spinner.requestPaint(); }
             }
         }
 
@@ -139,6 +188,7 @@ ColumnLayout {
             PlasmaComponents.Label {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
+                visible: !root.idle
                 text: Math.round(root.pct)
                 color: root.valueColor
                 font.pixelSize: Math.max(9, ring.size * 0.33)
@@ -149,7 +199,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
                 // Drops out on the compact panel ring, where it would be illegible.
-                visible: root.captions && root.showCountdown && ring.size >= 40
+                visible: !root.idle && root.captions && root.showCountdown && ring.size >= 40
                 text: Formatter.duration(root.secondsLeft, ring.size < 96)
                 opacity: 0.55
                 // The weekly rings are half the session ring's diameter.

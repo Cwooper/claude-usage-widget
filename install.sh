@@ -10,7 +10,6 @@
 set -eu
 
 repo=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-bin_target="$HOME/.local/bin/claude-usage-probe"
 plasmoid_target="$HOME/.local/share/plasma/plasmoids/dev.cwooper.claudeusage"
 mode=copy
 
@@ -48,7 +47,6 @@ install_path() {
     echo "installed $dst"
 }
 
-install_path "$repo/bin/claude-usage-probe" "$bin_target"
 install_path "$repo/plasmoid" "$plasmoid_target"
 
 echo

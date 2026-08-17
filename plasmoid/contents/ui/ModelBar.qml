@@ -33,6 +33,7 @@ Item {
         return Qt.darker(baseColor, 1.6 - rank * 0.3);
     }
 
+    property bool idle: false
     property int barHeight: Kirigami.Units.gridUnit
 
     implicitHeight: barHeight
@@ -40,13 +41,31 @@ Item {
     Rectangle {
         anchors.fill: parent
         color: Qt.alpha(Kirigami.Theme.textColor, 0.12)
-        visible: root.total <= 0
+        visible: root.idle || root.total <= 0
+        clip: true
+
+        Rectangle {
+            id: shimmer
+            width: parent.width * 0.28
+            height: parent.height
+            visible: root.idle
+            color: Qt.alpha(Kirigami.Theme.highlightColor, 0.55)
+
+            XAnimator on x {
+                running: root.idle
+                loops: Animation.Infinite
+                from: -shimmer.width
+                to: shimmer.parent.width
+                duration: 1400
+            }
+        }
     }
+
 
     Row {
         id: segments
         anchors.fill: parent
-        visible: root.total > 0
+        visible: !root.idle && root.total > 0
 
         Repeater {
             model: root.models
