@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+      http://www.kde.org/standards/kcfg/1.0/kcfg.xsd" >
+  <kcfgfile name=""/>
+
+  <group name="General">
+    <entry name="pollMinutes" type="Int">
+      <label>Minutes between probes.</label>
+      <default>5</default>
+      <min>1</min>
+      <max>60</max>
+    </entry>
+
+    <entry name="showSessionRing" type="Bool">
+      <label>Show the session limit ring.</label>
+      <default>true</default>
+    </entry>
+    <entry name="showWeeklyRings" type="Bool">
+      <label>Show the weekly limit rings.</label>
+      <default>true</default>
+    </entry>
+    <entry name="showModelBar" type="Bool">
+      <label>Show the per-model token bar.</label>
+      <default>true</default>
+    </entry>
+    <entry name="showCountdown" type="Bool">
+      <label>Show time until reset inside each ring.</label>
+      <default>true</default>
+    </entry>
+    <entry name="showLabels" type="Bool">
+      <label>Show the caption under each ring.</label>
+      <default>true</default>
+    </entry>
+    <entry name="showPaceTick" type="Bool">
+      <label>Show the pace marker on each ring.</label>
+      <default>true</default>
+    </entry>
+
+    <entry name="modelBarHeight" type="Int">
+      <label>Height of the model bar, in points.</label>
+      <default>18</default>
+      <min>6</min>
+      <max>96</max>
+    </entry>
+    <entry name="ringThickness" type="Int">
+      <label>Ring stroke width, as a percentage of ring diameter.</label>
+      <default>10</default>
+      <min>4</min>
+      <max>25</max>
+    </entry>
+  </group>
+
+  <group name="Colors">
+    <entry name="useThemeColors" type="Bool">
+      <label>Take the pace colours from the desktop theme.</label>
+      <default>true</default>
+    </entry>
+    <entry name="colorUnderPace" type="Color">
+      <label>Arc colour while under pace.</label>
+      <default>#27ae60</default>
+    </entry>
+    <entry name="colorNearPace" type="Color">
+      <label>Arc colour while slightly over pace.</label>
+      <default>#f67400</default>
+    </entry>
+    <entry name="colorOverPace" type="Color">
+      <label>Arc colour while well over pace.</label>
+      <default>#da4453</default>
+    </entry>
+    <entry name="colorAhead" type="Color">
+      <label>Tick colour while comfortably under pace.</label>
+      <default>#eff0f1</default>
+    </entry>
+    <entry name="colorOnPace" type="Color">
+      <label>Tick colour while tracking pace.</label>
+      <default>#36baff</default>
+    </entry>
+    <entry name="modelBarColor" type="Color">
+      <label>Base colour of the model bar ramp.</label>
+      <default>#d97757</default>
+    </entry>
+
+    <entry name="nearPaceThreshold" type="Int">
+      <label>Points over pace before the arc turns to the near-pace colour.</label>
+      <default>0</default>
+      <min>0</min>
+      <max>50</max>
+    </entry>
+    <entry name="overPaceThreshold" type="Int">
+      <label>Points over pace before the arc turns to the over-pace colour.</label>
+      <default>15</default>
+      <min>1</min>
+      <max>75</max>
+    </entry>
+  </group>
+</kcfg>

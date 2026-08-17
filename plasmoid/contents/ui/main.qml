@@ -13,7 +13,7 @@ PlasmoidItem {
     id: root
 
     readonly property string probeCommand: "$HOME/.local/bin/claude-usage-probe"
-    readonly property int pollInterval: 5 * 60 * 1000
+    readonly property int pollInterval: Plasmoid.configuration.pollMinutes * 60 * 1000
 
     property var gauges: []
     property var models: []
@@ -52,6 +52,7 @@ PlasmoidItem {
     function secondsLeft(gauge) {
         return Math.max(0, gauge.resetsAt - root.now);
     }
+
 
     P5Support.DataSource {
         id: probe
@@ -127,7 +128,7 @@ PlasmoidItem {
 
         onClicked: root.expanded = !root.expanded
 
-        Gauge {
+        StyledGauge {
             anchors.fill: parent
             anchors.margins: Kirigami.Units.smallSpacing
             captions: false
@@ -162,14 +163,14 @@ PlasmoidItem {
                 Layout.fillHeight: true
                 spacing: Kirigami.Units.largeSpacing
 
-                Gauge {
+                StyledGauge {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     // Equal stretch against a pair of gauges, so the session
                     // window -- the one that actually stops work -- draws at
                     // double their diameter.
                     Layout.horizontalStretchFactor: 2
-                    visible: root.sessionGauge !== null
+                    visible: root.sessionGauge !== null && Plasmoid.configuration.showSessionRing
                     label: root.sessionGauge ? root.sessionGauge.key : ""
                     pct: root.sessionGauge ? root.sessionGauge.pct : 0
                     pace: root.sessionGauge ? root.paceOf(root.sessionGauge) : 0
@@ -177,6 +178,9 @@ PlasmoidItem {
                 }
 
                 Kirigami.Separator {
+                    visible: Plasmoid.configuration.showSessionRing
+                             && Plasmoid.configuration.showWeeklyRings
+                             && root.otherGauges.length > 0
                     Layout.fillHeight: true
                     Layout.topMargin: Kirigami.Units.smallSpacing
                     Layout.bottomMargin: Kirigami.Units.gridUnit
@@ -184,6 +188,7 @@ PlasmoidItem {
                 }
 
                 RowLayout {
+                    visible: Plasmoid.configuration.showWeeklyRings
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.horizontalStretchFactor: 2
@@ -192,7 +197,7 @@ PlasmoidItem {
                     Repeater {
                         model: root.otherGauges
 
-                        Gauge {
+                        StyledGauge {
                             required property var modelData
 
                             Layout.fillWidth: true
@@ -207,8 +212,11 @@ PlasmoidItem {
             }
 
             ModelBar {
+                visible: Plasmoid.configuration.showModelBar
                 Layout.fillWidth: true
                 models: root.models
+                baseColor: Plasmoid.configuration.modelBarColor
+                barHeight: Plasmoid.configuration.modelBarHeight
             }
         }
     }

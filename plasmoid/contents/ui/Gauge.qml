@@ -13,19 +13,29 @@ ColumnLayout {
     property real secondsLeft: 0
     property bool captions: true
 
+    property bool showCountdown: true
+    property bool showLabel: true
+    property bool showTick: true
+    property real thickness: 0.1
+
+    property bool themeColors: true
+    property color underColor: Kirigami.Theme.positiveTextColor
+    property color nearColor: Kirigami.Theme.neutralTextColor
+    property color overColor: Kirigami.Theme.negativeTextColor
+    property color aheadColor: Kirigami.Theme.textColor
+    property color onPaceColor: themePaceColor
+    property real nearThreshold: 0
+    property real overThreshold: 0.15
+
     spacing: 0
 
     // Pace-relative: 79% is fine six days into a week, alarming six hours in.
     readonly property real delta: pct / 100 - Math.min(1, pace)
 
-    readonly property color valueColor: delta <= 0 ? Kirigami.Theme.positiveTextColor
-                                      : delta <= 0.15 ? Kirigami.Theme.neutralTextColor
-                                      : Kirigami.Theme.negativeTextColor
-
     // Breeze's highlight reads as white at tick width, so the "on pace" blue is
     // saturated rather than darkened -- darkening it far enough to separate from
     // white turned it muddy.
-    readonly property color paceColor: {
+    readonly property color themePaceColor: {
         const accent = Kirigami.Theme.highlightColor;
         return Qt.hsla(accent.hslHue,
                        Math.min(1, accent.hslSaturation * 1.4),
@@ -33,10 +43,14 @@ ColumnLayout {
                        1);
     }
 
-    readonly property color tickColor: delta <= -0.05 ? Kirigami.Theme.textColor
-                                     : delta <= 0.05 ? paceColor
-                                     : delta <= 0.15 ? Kirigami.Theme.neutralTextColor
-                                     : Kirigami.Theme.negativeTextColor
+    readonly property color valueColor: delta <= nearThreshold ? underColor
+                                      : delta <= overThreshold ? nearColor
+                                      : overColor
+
+    readonly property color tickColor: delta <= -0.05 ? aheadColor
+                                     : delta <= 0.05 ? onPaceColor
+                                     : delta <= overThreshold ? nearColor
+                                     : overColor
 
     Item {
         id: ring
@@ -58,7 +72,7 @@ ColumnLayout {
 
                 const cx = width / 2;
                 const cy = height / 2;
-                const thickness = Math.max(3, ring.size * 0.1);
+                const thickness = Math.max(3, ring.size * root.thickness);
                 const radius = ring.size / 2 - thickness / 2 - 1;
                 if (radius <= 0) {
                     return;
@@ -78,6 +92,10 @@ ColumnLayout {
                     ctx.arc(cx, cy, radius, top, top + sweep);
                     ctx.strokeStyle = root.valueColor;
                     ctx.stroke();
+                }
+
+                if (!root.showTick) {
+                    return;
                 }
 
                 const paceAngle = top + 2 * Math.PI * Math.max(0, Math.min(1, root.pace));
@@ -106,6 +124,8 @@ ColumnLayout {
                 function onPaceChanged() { canvas.requestPaint(); }
                 function onValueColorChanged() { canvas.requestPaint(); }
                 function onTickColorChanged() { canvas.requestPaint(); }
+                function onShowTickChanged() { canvas.requestPaint(); }
+                function onThicknessChanged() { canvas.requestPaint(); }
             }
         }
 
@@ -129,7 +149,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
                 // Drops out on the compact panel ring, where it would be illegible.
-                visible: root.captions && ring.size >= 40
+                visible: root.captions && root.showCountdown && ring.size >= 40
                 text: Formatter.duration(root.secondsLeft, ring.size < 96)
                 opacity: 0.55
                 // The weekly rings are half the session ring's diameter.
@@ -142,7 +162,7 @@ ColumnLayout {
     }
 
     PlasmaComponents.Label {
-        visible: root.captions
+        visible: root.captions && root.showLabel
         Layout.fillWidth: true
         Layout.topMargin: Kirigami.Units.smallSpacing
         horizontalAlignment: Text.AlignHCenter

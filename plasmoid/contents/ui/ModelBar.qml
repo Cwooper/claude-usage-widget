@@ -21,7 +21,7 @@ Item {
     }
 
     // Keyed by family, not position, so a model keeps its shade as the mix shifts.
-    readonly property color baseColor: "#d97757"
+    property color baseColor: "#d97757"
     readonly property var families: ["fable", "opus", "sonnet", "haiku"]
 
     function shadeFor(name) {
@@ -33,7 +33,9 @@ Item {
         return Qt.darker(baseColor, 1.6 - rank * 0.3);
     }
 
-    implicitHeight: Kirigami.Units.gridUnit
+    property int barHeight: Kirigami.Units.gridUnit
+
+    implicitHeight: barHeight
 
     Rectangle {
         anchors.fill: parent

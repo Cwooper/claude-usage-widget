@@ -32,9 +32,22 @@ limit early.
 
 Then: right-click desktop → Add Widgets → "Claude Usage".
 
-The script symlinks `bin/claude-usage-probe` into `~/.local/bin` and `plasmoid/`
-into `~/.local/share/plasma/plasmoids/dev.cwooper.claudeusage`, so edits in the
-checkout take effect on the next plasmashell restart.
+The script copies `bin/claude-usage-probe` into `~/.local/bin` and `plasmoid/`
+into `~/.local/share/plasma/plasmoids/dev.cwooper.claudeusage`. Pass `--link` to
+symlink the checkout instead, so edits land without reinstalling — but remove the
+widget from your desktop first. plasmashell reloads an applet whenever its
+package changes, and reloading a half-saved file set segfaults it.
+
+## Configuration
+
+Right-click the widget → Configure.
+
+**General** — update interval; which pieces to show (session ring, weekly rings,
+model bar, pace marker, countdown, captions); model bar height; ring thickness.
+
+**Colours** — the five pace colours, which follow the desktop theme unless you
+switch that off; the model bar's base colour, which the ramp is shaded from; and
+the two thresholds deciding how far over pace counts as over, and as well over.
 
 ## How it works
 
