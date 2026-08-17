@@ -42,6 +42,9 @@ install_path() {
     stage="$(dirname -- "$dst")/.$(basename -- "$dst").stage"
     rm -rf "$stage"
     cp -a "$src" "$stage"
+    # Python leaves bytecode next to the probe once the tests import it; it must
+    # not end up in an installed or published package.
+    find "$stage" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
     clear_target "$dst"
     mv "$stage" "$dst"
     echo "installed $dst"
