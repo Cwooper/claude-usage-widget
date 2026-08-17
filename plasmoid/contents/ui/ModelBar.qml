@@ -51,11 +51,17 @@ Item {
             visible: root.idle
             color: Qt.alpha(Kirigami.Theme.highlightColor, 0.55)
 
-            XAnimator on x {
+            // Animating a normalised progress and deriving x from it, rather
+            // than animating x: the full representation is built lazily, so an
+            // Animator would latch both endpoints while the bar is still 0 wide.
+            property real progress: 0
+            x: -width + progress * (root.width + width)
+
+            NumberAnimation on progress {
                 running: root.idle
                 loops: Animation.Infinite
-                from: -shimmer.width
-                to: shimmer.parent.width
+                from: 0
+                to: 1
                 duration: 3800
                 // Eases at both ends so the restart reads as a pause, not a snap.
                 easing.type: Easing.InOutQuad

@@ -3,7 +3,8 @@
     "KPlugin": {
         "Authors": [
             {
-                "Name": "Cooper Morgan"
+                "Name": "Cooper Morgan",
+                "Email": "jcoopergibbons@gmail.com"
             }
         ],
         "Category": "System Information",
@@ -13,7 +14,9 @@
         "Id": "dev.cwooper.claudeusage",
         "License": "MIT",
         "Name": "Claude Usage",
-        "Version": "1.0"
+        "Version": "1.0.0",
+        "Website": "https://github.com/Cwooper/claude-usage-widget",
+        "BugReportUrl": "https://github.com/Cwooper/claude-usage-widget/issues"
     },
     "X-Plasma-API-Minimum-Version": "6.0"
 }

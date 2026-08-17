@@ -79,7 +79,6 @@ class ParseResetTest(unittest.TestCase):
             probe.parse_reset("sometime next Tuesday", "Atlantic/Reykjavik", now)
 
     def test_rejects_unusable_timezone(self):
-        """Falling back to local time would shift countdowns while looking fine."""
         now = datetime(2026, 8, 16, 23, 55, tzinfo=REYKJAVIK)
         with self.assertRaises(ValueError):
             probe.parse_reset("Aug 17, 11am", "Not/AZone", now)
@@ -116,6 +115,10 @@ class ParseUsageTest(unittest.TestCase):
         self.assertEqual([g["key"] for g in gauges], ["session", "week", "fable"])
         self.assertEqual([g["pct"] for g in gauges], [63, 79, 72])
 
+    def test_records_the_reporting_timezone(self):
+        for gauge in probe.parse_usage(USAGE_SAMPLE, self.now):
+            self.assertEqual(gauge["tz"], "Atlantic/Reykjavik")
+
     def test_assigns_window_length_per_kind(self):
         gauges = probe.parse_usage(USAGE_SAMPLE, self.now)
         by_key = {g["key"]: g for g in gauges}
@@ -132,7 +135,6 @@ class ParseUsageTest(unittest.TestCase):
             probe.parse_usage("Claude Code is not authenticated.", self.now)
 
     def test_raises_when_only_the_session_line_is_missing(self):
-        """Otherwise the window that actually stops work vanishes silently."""
         weekly_only = "\n".join(
             line for line in USAGE_SAMPLE.splitlines()
             if not line.startswith("Current session")
@@ -224,7 +226,6 @@ class AggregateModelsTest(unittest.TestCase):
         self.assertEqual(probe.aggregate_models({"daily": None}), [])
 
     def test_excludes_other_agent_clis(self):
-        """Their tokens do not count against Claude's limit windows."""
         payload = {"daily": [{"agents": [
             {"agent": "claude", "modelBreakdowns": [{"modelName": "claude-opus-5",
                                                      "outputTokens": 12}]},
@@ -242,6 +243,19 @@ class WindowStartTest(unittest.TestCase):
             {"key": "session", "resetsAt": resets, "windowSeconds": 5 * 3600},
             {"key": "week", "resetsAt": resets, "windowSeconds": 7 * 86400},
         ]
+        self.assertEqual(probe.window_start(gauges), date(2026, 8, 10))
+
+    def test_dates_the_window_in_the_reporting_timezone(self):
+        """Dating it locally can land a day off and clip the opening day."""
+        resets = datetime(2026, 8, 17, 11, 0, tzinfo=REYKJAVIK).timestamp()
+        gauges = [{"key": "week", "resetsAt": resets,
+                   "windowSeconds": 7 * 86400, "tz": "Atlantic/Reykjavik"}]
+        self.assertEqual(probe.window_start(gauges), date(2026, 8, 10))
+
+    def test_survives_an_unusable_timezone_field(self):
+        resets = datetime(2026, 8, 17, 11, 0).timestamp()
+        gauges = [{"key": "week", "resetsAt": resets,
+                   "windowSeconds": 7 * 86400, "tz": "Not/AZone"}]
         self.assertEqual(probe.window_start(gauges), date(2026, 8, 10))
 
     def test_falls_back_to_seven_days_back_without_gauges(self):

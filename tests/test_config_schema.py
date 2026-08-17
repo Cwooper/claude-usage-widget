@@ -29,6 +29,26 @@ def aliases_in(path):
     return set(re.findall(r"property alias cfg_(\w+):", path.read_text()))
 
 
+def spinboxes(path):
+    """(id, body) for each QQC2.SpinBox block, matched by brace depth.
+
+    A flat regex over the whole file pairs each id with the next from/to it can
+    find, which quietly attributed three controls to unrelated ids.
+    """
+    text = path.read_text()
+    found = []
+    for match in re.finditer(r"QQC2\.SpinBox\s*\{", text):
+        depth, i = 1, match.end()
+        while depth and i < len(text):
+            depth += {"{": 1, "}": -1}.get(text[i], 0)
+            i += 1
+        body = text[match.end():i - 1]
+        name = re.search(r"\bid:\s*(\w+)", body)
+        if name:
+            found.append((name.group(1), body))
+    return found
+
+
 def configuration_reads():
     used = set()
     for path in UI_FILES:
@@ -72,21 +92,28 @@ class ConfigSchemaTest(unittest.TestCase):
                 self.assertIsNotNone(entry.find("{%s}min" % KCFG_NS["k"]))
                 self.assertIsNotNone(entry.find("{%s}max" % KCFG_NS["k"]))
 
+    def test_every_spinbox_is_checked(self):
+        """Guards the scan below: a regex that silently matched nothing passed."""
+        found = {name for page in CONFIG_PAGES for name, _ in spinboxes(page)}
+        expected = {n for n, e in self.entries.items()
+                    if e.get("type", "").lower() == "int"}
+        self.assertEqual(found, expected)
+
     def test_spinbox_ranges_match_the_schema(self):
-        """A control wider than its entry lets users store clamped values."""
+        """A control wider than its entry lets users store values it then clamps."""
         for page in CONFIG_PAGES:
-            text = page.read_text()
-            for alias, frm, to in re.findall(
-                    r"id:\s*(\w+)\b.*?from:\s*(-?\d+).*?to:\s*(-?\d+)", text, re.S):
-                entry = self.entries.get(alias)
+            for name, body in spinboxes(page):
+                entry = self.entries.get(name)
                 if entry is None:
                     continue
-                lo = entry.find("{%s}min" % KCFG_NS["k"])
-                hi = entry.find("{%s}max" % KCFG_NS["k"])
-                if lo is None or hi is None:
-                    continue
-                with self.subTest(control=alias):
-                    self.assertEqual((int(frm), int(to)), (int(lo.text), int(hi.text)))
+                for prop, tag in (("from", "min"), ("to", "max")):
+                    literal = re.search(r"\n\s*%s:\s*(-?\d+)\s*\n" % prop, body)
+                    bound = entry.find("{%s}%s" % (KCFG_NS["k"], tag))
+                    # A bound computed from another control cannot be compared.
+                    if literal is None or bound is None:
+                        continue
+                    with self.subTest(control=name, bound=prop):
+                        self.assertEqual(int(literal.group(1)), int(bound.text))
 
 
 class ConfigWiringTest(unittest.TestCase):
@@ -98,7 +125,6 @@ class ConfigWiringTest(unittest.TestCase):
             self.assertTrue((PLASMOID / "ui" / source).is_file(), source)
 
     def test_gauge_does_not_read_the_configuration(self):
-        """Gauge stays reusable; StyledGauge is the only config-aware wrapper."""
         self.assertNotIn("Plasmoid.configuration",
                          (PLASMOID / "ui" / "Gauge.qml").read_text())
 

@@ -17,7 +17,7 @@ limit early.
 - **Bar** — output tokens per model family over the current weekly window,
   darkest (Fable) to lightest (Haiku).
 
-A refresh button sits in the top right, spinning while a probe is in flight.
+A refresh button sits in the top right, dimmed while a probe is in flight.
 Until the first reading lands the rings show an indeterminate spinner.
 
 ## Requirements
@@ -67,7 +67,7 @@ and prints one JSON object:
 }
 ```
 
-The widget runs it every 5 minutes (`pollInterval` in `contents/ui/main.qml`)
+The widget runs it on the configured interval (5 minutes by default)
 and re-renders the countdowns and pace ticks every 30 seconds from the last
 reading. Readings are cached to `~/.cache/claude-usage.json`; if a probe fails,
 the widget dims and keeps showing the last good values rather than going blank.

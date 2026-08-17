@@ -25,6 +25,11 @@ CCUSAGE = "ccusage@^20"
 # against the limit windows the gauges show.
 CCUSAGE_AGENT = "claude"
 
+# Each npx call is a node cold start plus a registry round-trip to resolve the
+# range, which at a one-minute poll would be 1440 a day. The week's model mix
+# moves slowly enough to sample far less often than the gauges.
+MODELS_MAX_AGE = 30 * 60
+
 # /usage reports each window's reset time but not its length, and the pace
 # marker needs the length to know how far through the window we are.
 WINDOW_SECONDS = {"session": 5 * 3600, "week": 7 * 86400}
@@ -50,14 +55,25 @@ def probe_env():
 
 
 def run(argv, timeout=60):
-    return subprocess.run(
-        argv,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=True,
-        env=probe_env(),
-    ).stdout
+    try:
+        proc = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=True,
+            # A first-run `claude` prompts on stdin and would otherwise block
+            # until the timeout on every poll.
+            stdin=subprocess.DEVNULL,
+            env=probe_env(),
+        )
+    except subprocess.CalledProcessError as exc:
+        # CalledProcessError only reports the exit status; the reason a user
+        # needs ("not logged in", "command not found") is in stderr.
+        detail = (exc.stderr or "").strip().splitlines()
+        raise RuntimeError("%s: %s" % (
+            argv[0], detail[-1][:200] if detail else "exit status %d" % exc.returncode))
+    return proc.stdout
 
 
 def parse_reset(stamp, tzname, now=None):
@@ -107,6 +123,7 @@ def parse_usage(text, now=None):
                 "pct": int(pct),
                 "resetsAt": parse_reset(stamp, tzname, now),
                 "windowSeconds": WINDOW_SECONDS[kind],
+                "tz": tzname,
             }
         )
     if not gauges:
@@ -176,11 +193,19 @@ def read_models(since):
 
 
 def window_start(gauges, now=None):
-    """Date the weekly limit window opened, for scoping the model mix."""
+    """Date the weekly limit window opened, for scoping the model mix.
+
+    Dated in the timezone /usage reported, not the machine's: far enough east or
+    west the two disagree by a day and --since would clip the opening day.
+    """
     for gauge in gauges:
         if gauge["windowSeconds"] == WINDOW_SECONDS["week"]:
             opened = gauge["resetsAt"] - gauge["windowSeconds"]
-            return datetime.fromtimestamp(opened).date()
+            try:
+                tz = ZoneInfo(gauge["tz"])
+            except Exception:
+                tz = None
+            return datetime.fromtimestamp(opened, tz).date()
     if now is None:
         now = datetime.now()
     return (now - timedelta(seconds=WINDOW_SECONDS["week"])).date()
@@ -220,12 +245,19 @@ def main():
         result["stale"] = True
         result["errors"].append("gauges: %s" % exc)
 
-    try:
-        result["models"] = read_models(window_start(fresh_gauges))
-    except Exception as exc:
-        result["models"] = cached.get("models", [])
-        result["stale"] = True
-        result["errors"].append("models: %s" % exc)
+    cached_models_age = result["ts"] - cached.get("modelsTs", 0)
+    if cached.get("models") and cached_models_age < MODELS_MAX_AGE:
+        result["models"] = cached["models"]
+        result["modelsTs"] = cached["modelsTs"]
+    else:
+        try:
+            result["models"] = read_models(window_start(fresh_gauges))
+            result["modelsTs"] = result["ts"]
+        except Exception as exc:
+            result["models"] = cached.get("models", [])
+            result["modelsTs"] = cached.get("modelsTs", 0)
+            result["stale"] = True
+            result["errors"].append("models: %s" % exc)
 
     result["ok"] = bool(result["gauges"])
     save_cache(result)

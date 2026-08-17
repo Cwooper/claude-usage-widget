@@ -82,7 +82,9 @@ Kirigami.FormLayout {
         id: nearPaceThreshold
         Kirigami.FormData.label: i18n("Over pace above:")
         from: 0
-        to: 50
+        // Past the well-over threshold the over-pace colour is unreachable and
+        // its button appears to do nothing.
+        to: overPaceThreshold.value
         textFromValue: (value) => i18np("%1 point", "%1 points", value)
         valueFromText: (text) => parseInt(text, 10)
     }

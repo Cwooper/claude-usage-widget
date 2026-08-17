@@ -16,9 +16,11 @@ PlasmoidItem {
     // Run through python3 rather than executing directly: a published .plasmoid
     // installs from a zip, which does not carry the executable bit.
     readonly property string probeCommand: {
-        const path = Qt.resolvedUrl("../bin/claude-usage-probe")
-                       .toString().replace(/^file:\/\//, "");
-        return "python3 '" + path + "'";
+        // A URL, so percent-encoded; and the engine runs this through a shell,
+        // so an apostrophe in the install path would close the quote early.
+        const url = Qt.resolvedUrl("../bin/claude-usage-probe").toString();
+        const path = decodeURIComponent(url.replace(/^file:\/\//, ""));
+        return "python3 '" + path.replace(/'/g, "'\\''") + "'";
     }
     readonly property int pollInterval: Plasmoid.configuration.pollMinutes * 60 * 1000
 
@@ -27,6 +29,8 @@ PlasmoidItem {
     property bool stale: false
     property bool everLoaded: false
     property bool busy: false
+    property bool probed: false
+    property string errorText: ""
 
     // Advances the pace marker and countdowns between probes, which are far
     // too expensive to run at display refresh rates.
@@ -76,6 +80,10 @@ PlasmoidItem {
 
     // Two blanks stand in for the weekly rings until the first reading, so the
     // idle widget has the same skeleton as the loaded one.
+    // Distinguishes "not probed yet" from "probed and got nothing", which
+    // otherwise both render as an endless spinner.
+    readonly property bool failed: probed && !everLoaded
+
     readonly property var weeklyModel: everLoaded ? otherGauges : [{}, {}]
 
 
@@ -87,8 +95,11 @@ PlasmoidItem {
         onNewData: function (source, data) {
             disconnectSource(source);
             root.busy = false;
+            root.probed = true;
             if (data["exit code"] !== 0) {
                 root.stale = true;
+                root.errorText = (data.stderr || "").trim()
+                                 || i18n("Could not start the usage probe.");
                 return;
             }
             try {
@@ -96,9 +107,11 @@ PlasmoidItem {
                 root.gauges = payload.gauges || [];
                 root.models = payload.models || [];
                 root.stale = !!payload.stale;
-                root.everLoaded = true;
+                root.errorText = (payload.errors || []).join("\n");
+                root.everLoaded = root.gauges.length > 0;
             } catch (e) {
                 root.stale = true;
+                root.errorText = i18n("The usage probe returned unreadable output.");
             }
         }
     }
@@ -120,19 +133,22 @@ PlasmoidItem {
         onTriggered: root.now = Date.now() / 1000
     }
 
-    toolTipMainText: "Claude Usage"
+    toolTipMainText: i18n("Claude Usage")
     toolTipSubText: {
+        if (failed) {
+            return errorText;
+        }
         if (!everLoaded) {
-            return "Waiting for first reading...";
+            return i18n("Waiting for first reading...");
         }
         const lines = gauges.map(g => g.key + ": " + g.pct + "% used, resets in "
                                  + Formatter.duration(secondsLeft(g)));
         if (models.length > 0) {
-            lines.push("Output tokens this week: "
+            lines.push(i18n("Output tokens this week: ")
                        + models.map(m => m.name + " " + Formatter.tokens(m.tokens)).join(", "));
         }
         if (stale) {
-            lines.push("(last known values; probe failed)");
+            lines.push(errorText || i18n("(last known values; probe failed)"));
         }
         return lines.join("\n");
     }
@@ -202,9 +218,22 @@ PlasmoidItem {
             }
         }
 
+        PlasmaComponents.Label {
+            anchors.fill: parent
+            anchors.margins: Kirigami.Units.gridUnit
+            visible: root.failed
+            text: root.errorText
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+            opacity: 0.8
+        }
+
         ColumnLayout {
             anchors.fill: parent
             anchors.margins: Kirigami.Units.smallSpacing
+            visible: !root.failed
             spacing: Kirigami.Units.largeSpacing
             opacity: root.stale ? 0.5 : 1
 
@@ -241,6 +270,7 @@ PlasmoidItem {
 
                 RowLayout {
                     visible: Plasmoid.configuration.showWeeklyRings
+                             && root.weeklyModel.length > 0
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.horizontalStretchFactor: 2

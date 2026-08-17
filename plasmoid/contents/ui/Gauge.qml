@@ -50,9 +50,14 @@ ColumnLayout {
                                       : overColor
 
     readonly property color tickColor: delta <= -0.05 ? aheadColor
-                                     : delta <= 0.05 ? onPaceColor
+                                     : delta <= Math.max(0.05, nearThreshold) ? onPaceColor
                                      : delta <= overThreshold ? nearColor
                                      : overColor
+
+    // Named so a theme change repaints the Canvas; read directly it would not.
+    readonly property color trackColor: Qt.alpha(Kirigami.Theme.textColor, 0.15)
+    readonly property color outlineColor: Kirigami.Theme.backgroundColor
+    readonly property color spinnerColor: Kirigami.Theme.highlightColor
 
     Item {
         id: ring
@@ -87,7 +92,7 @@ ColumnLayout {
 
                 ctx.beginPath();
                 ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
-                ctx.strokeStyle = Qt.alpha(Kirigami.Theme.textColor, 0.15);
+                ctx.strokeStyle = root.trackColor;
                 ctx.stroke();
 
                 const sweep = 2 * Math.PI * Math.max(0, Math.min(1, root.pct / 100));
@@ -114,7 +119,7 @@ ColumnLayout {
                 ctx.moveTo(cx + Math.cos(paceAngle) * inner, cy + Math.sin(paceAngle) * inner);
                 ctx.lineTo(cx + Math.cos(paceAngle) * outer, cy + Math.sin(paceAngle) * outer);
                 ctx.lineWidth = tickWidth + Math.max(2, thickness * 0.22);
-                ctx.strokeStyle = Kirigami.Theme.backgroundColor;
+                ctx.strokeStyle = root.outlineColor;
                 ctx.stroke();
 
                 ctx.lineWidth = tickWidth;
@@ -131,6 +136,8 @@ ColumnLayout {
                 function onShowTickChanged() { canvas.requestPaint(); }
                 function onThicknessChanged() { canvas.requestPaint(); }
                 function onIdleChanged() { canvas.requestPaint(); }
+                function onTrackColorChanged() { canvas.requestPaint(); }
+                function onOutlineColorChanged() { canvas.requestPaint(); }
             }
         }
 
@@ -155,12 +162,12 @@ ColumnLayout {
 
                 ctx.beginPath();
                 ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
-                ctx.strokeStyle = Qt.alpha(Kirigami.Theme.textColor, 0.15);
+                ctx.strokeStyle = root.trackColor;
                 ctx.stroke();
 
                 ctx.beginPath();
                 ctx.arc(cx, cy, radius, -Math.PI / 2, 0);
-                ctx.strokeStyle = Kirigami.Theme.highlightColor;
+                ctx.strokeStyle = root.spinnerColor;
                 ctx.stroke();
             }
 
@@ -176,6 +183,8 @@ ColumnLayout {
             Connections {
                 target: root
                 function onThicknessChanged() { spinner.requestPaint(); }
+                function onTrackColorChanged() { spinner.requestPaint(); }
+                function onSpinnerColorChanged() { spinner.requestPaint(); }
             }
         }
 
@@ -203,7 +212,6 @@ ColumnLayout {
                 visible: !root.idle && root.captions && root.showCountdown && ring.size >= 40
                 text: Formatter.duration(root.secondsLeft, ring.size < 96)
                 opacity: 0.55
-                // The weekly rings are half the session ring's diameter.
                 font.pixelSize: Math.max(8, ring.size * 0.13)
                 fontSizeMode: Text.HorizontalFit
                 minimumPixelSize: 7
