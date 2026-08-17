@@ -81,6 +81,16 @@ the widget dims and keeps showing the last good values rather than going blank.
 - `/usage` counts usage across all your machines; the model bar only sees local
   transcripts under `~/.claude/projects`.
 
+## Packaging
+
+```sh
+./package.sh
+```
+
+Writes `dist/dev.cwooper.claudeusage-<version>.plasmoid`, the zip layout
+store.kde.org and `kpackagetool6 --install` expect. Bump `Version` in
+`plasmoid/metadata.json` first; the store keys update detection off it.
+
 ## Tests
 
 ```sh
