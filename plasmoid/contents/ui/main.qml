@@ -141,8 +141,10 @@ PlasmoidItem {
         if (!everLoaded) {
             return i18n("Waiting for first reading...");
         }
-        const lines = gauges.map(g => g.key + ": " + g.pct + "% used, resets in "
-                                 + Formatter.duration(secondsLeft(g)));
+        const lines = gauges.map(g => g.inactive
+                                 ? g.key + ": " + i18n("no active session")
+                                 : g.key + ": " + g.pct + "% used, resets in "
+                                   + Formatter.duration(secondsLeft(g)));
         if (models.length > 0) {
             lines.push(i18n("Output tokens this week: ")
                        + models.map(m => m.name + " " + Formatter.tokens(m.tokens)).join(", "));
@@ -159,6 +161,11 @@ PlasmoidItem {
         readonly property var worst: {
             let pick = null;
             for (const gauge of root.gauges) {
+                // Ranking a window that is not running would let the panel ring
+                // sit at 0 while a weekly window burns.
+                if (gauge.inactive) {
+                    continue;
+                }
                 if (!pick || root.paceDelta(gauge) > root.paceDelta(pick)) {
                     pick = gauge;
                 }
@@ -175,7 +182,7 @@ PlasmoidItem {
             anchors.fill: parent
             anchors.margins: Kirigami.Units.smallSpacing
             captions: false
-            idle: !root.everLoaded
+            loading: !root.everLoaded
             opacity: root.stale ? 0.5 : 1
             pct: parent.worst ? parent.worst.pct : 0
             pace: parent.worst ? root.paceOf(parent.worst) : 0
@@ -243,6 +250,8 @@ PlasmoidItem {
                 spacing: Kirigami.Units.largeSpacing
 
                 StyledGauge {
+                    id: sessionRing
+
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     // Equal stretch against a pair of gauges, so the session
@@ -251,7 +260,8 @@ PlasmoidItem {
                     Layout.horizontalStretchFactor: 2
                     visible: (root.sessionGauge !== null || !root.everLoaded)
                              && Plasmoid.configuration.showSessionRing
-                    idle: !root.everLoaded
+                    loading: !root.everLoaded
+                    inactive: root.sessionGauge !== null && !!root.sessionGauge.inactive
                     label: root.sessionGauge ? root.sessionGauge.key : ""
                     pct: root.sessionGauge ? root.sessionGauge.pct : 0
                     pace: root.sessionGauge ? root.paceOf(root.sessionGauge) : 0
@@ -259,7 +269,9 @@ PlasmoidItem {
                 }
 
                 Kirigami.Separator {
-                    visible: Plasmoid.configuration.showSessionRing
+                    // Off the ring's own visibility, not the setting: a probe
+                    // failure can leave no session gauge to draw beside it.
+                    visible: sessionRing.visible
                              && Plasmoid.configuration.showWeeklyRings
                              && root.weeklyModel.length > 0
                     Layout.fillHeight: true
@@ -284,7 +296,7 @@ PlasmoidItem {
 
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            idle: !root.everLoaded
+                            loading: !root.everLoaded
                             label: modelData.key !== undefined ? modelData.key : ""
                             pct: modelData.pct !== undefined ? modelData.pct : 0
                             pace: root.paceOf(modelData)
@@ -297,7 +309,7 @@ PlasmoidItem {
             ModelBar {
                 visible: Plasmoid.configuration.showModelBar
                 Layout.fillWidth: true
-                idle: !root.everLoaded
+                loading: !root.everLoaded
                 models: root.models
                 baseColor: Plasmoid.configuration.modelBarColor
                 barHeight: Plasmoid.configuration.modelBarHeight

@@ -32,6 +32,14 @@ Last 24h · 148 requests · 3 sessions
 """
 
 
+def weekly_only():
+    """USAGE_SAMPLE as printed while no session is open."""
+    return "\n".join(
+        line for line in USAGE_SAMPLE.splitlines()
+        if not line.startswith("Current session")
+    )
+
+
 class ParseResetTest(unittest.TestCase):
     def test_parses_stamp_with_minutes(self):
         now = datetime(2026, 8, 16, 23, 55, tzinfo=REYKJAVIK)
@@ -134,13 +142,40 @@ class ParseUsageTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             probe.parse_usage("Claude Code is not authenticated.", self.now)
 
-    def test_raises_when_only_the_session_line_is_missing(self):
-        weekly_only = "\n".join(
-            line for line in USAGE_SAMPLE.splitlines()
-            if not line.startswith("Current session")
-        )
-        with self.assertRaises(ValueError):
-            probe.parse_usage(weekly_only, self.now)
+    def test_substitutes_an_inactive_session_when_its_line_is_missing(self):
+        """/usage drops the session line entirely between sessions."""
+        gauges = probe.parse_usage(weekly_only(), self.now)
+        self.assertEqual([g["key"] for g in gauges], ["session", "week", "fable"])
+        session = gauges[0]
+        self.assertTrue(session["inactive"])
+        self.assertEqual(session["pct"], 0)
+        self.assertIsNone(session["resetsAt"])
+        self.assertEqual(session["tz"], "Atlantic/Reykjavik")
+
+    def test_keeps_the_weekly_gauges_without_a_session_line(self):
+        by_key = {g["key"]: g for g in probe.parse_usage(weekly_only(), self.now)}
+        self.assertEqual(by_key["week"]["pct"], 79)
+        self.assertEqual(by_key["fable"]["pct"], 72)
+
+
+class UnexpiredTest(unittest.TestCase):
+    def setUp(self):
+        self.now = 1_000_000
+
+    def test_keeps_windows_still_open(self):
+        gauges = [{"key": "week", "resetsAt": self.now + 60}]
+        self.assertEqual(probe.unexpired(gauges, self.now), gauges)
+
+    def test_drops_windows_that_have_reset(self):
+        gauges = [
+            {"key": "session", "resetsAt": self.now - 1},
+            {"key": "week", "resetsAt": self.now + 60},
+        ]
+        self.assertEqual([g["key"] for g in probe.unexpired(gauges, self.now)], ["week"])
+
+    def test_drops_gauges_without_a_reset_time(self):
+        """A cached inactive session says nothing about whether one is open now."""
+        self.assertEqual(probe.unexpired([probe.inactive_session("UTC")], self.now), [])
 
 
 class ClaudeBreakdownsTest(unittest.TestCase):

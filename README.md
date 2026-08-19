@@ -17,6 +17,10 @@ limit early.
 - **Bar** — output tokens per model family over the current weekly window,
   darkest (Fable) to lightest (Haiku).
 
+Between sessions `/usage` reports no session window at all; the session ring
+then dims to 0 with `idle` where the countdown goes, and the weekly rings carry
+on undimmed.
+
 A refresh button sits in the top right, dimmed while a probe is in flight.
 Until the first reading lands the rings show an indeterminate spinner.
 
@@ -70,7 +74,9 @@ and prints one JSON object:
 The widget runs it on the configured interval (5 minutes by default)
 and re-renders the countdowns and pace ticks every 30 seconds from the last
 reading. Readings are cached to `~/.cache/claude-usage.json`; if a probe fails,
-the widget dims and keeps showing the last good values rather than going blank.
+the widget dims and keeps showing the last good values rather than going blank
+-- minus any window that has since reset, whose percentage belongs to a window
+that no longer exists.
 
 ### Known limits
 
