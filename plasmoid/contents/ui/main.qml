@@ -79,7 +79,7 @@ PlasmoidItem {
     }
 
     // Two blanks stand in for the weekly rings until the first reading, so the
-    // idle widget has the same skeleton as the loaded one.
+    // unloaded widget has the same skeleton as the loaded one.
     // Distinguishes "not probed yet" from "probed and got nothing", which
     // otherwise both render as an endless spinner.
     readonly property bool failed: probed && !everLoaded
@@ -142,7 +142,7 @@ PlasmoidItem {
             return i18n("Waiting for first reading...");
         }
         const lines = gauges.map(g => g.inactive
-                                 ? g.key + ": " + i18n("no active session")
+                                 ? g.key + ": " + i18n("idle")
                                  : g.key + ": " + g.pct + "% used, resets in "
                                    + Formatter.duration(secondsLeft(g)));
         if (models.length > 0) {
@@ -182,7 +182,9 @@ PlasmoidItem {
             anchors.fill: parent
             anchors.margins: Kirigami.Units.smallSpacing
             captions: false
-            loading: !root.everLoaded
+            // A failed probe leaves no reading to wait for; spinning here would
+            // read as a probe still in flight.
+            loading: !root.everLoaded && !root.failed
             opacity: root.stale ? 0.5 : 1
             pct: parent.worst ? parent.worst.pct : 0
             pace: parent.worst ? root.paceOf(parent.worst) : 0
@@ -262,6 +264,7 @@ PlasmoidItem {
                              && Plasmoid.configuration.showSessionRing
                     loading: !root.everLoaded
                     inactive: root.sessionGauge !== null && !!root.sessionGauge.inactive
+                    inactiveOpacity: root.stale ? 1 : 0.5
                     label: root.sessionGauge ? root.sessionGauge.key : ""
                     pct: root.sessionGauge ? root.sessionGauge.pct : 0
                     pace: root.sessionGauge ? root.paceOf(root.sessionGauge) : 0

@@ -37,6 +37,11 @@ WINDOW_SECONDS = {"session": 5 * 3600, "week": 7 * 86400}
 # Fixed order so the model bar does not reshuffle its segments between polls.
 FAMILIES = ("fable", "opus", "sonnet", "haiku")
 
+# Whether /usage mentioned a session window at all. It omits the line between
+# sessions, so its absence is a state; a line USAGE_LINE cannot match is a
+# format change wearing that state's clothes.
+SESSION_LINE = re.compile(r"^\s*Current\s+session\b", re.I | re.M)
+
 USAGE_LINE = re.compile(
     r"Current\s+(session|week)\s*(?:\(([^)]*)\))?\s*:\s*"
     r"(\d+)%\s*used.*?resets\s+"
@@ -140,22 +145,22 @@ def parse_usage(text, now=None):
         )
     if not gauges:
         raise ValueError("no usage lines in /usage output")
-    # Between sessions /usage prints the weekly lines and drops the session one
-    # entirely. Those weekly lines parsing is what separates that from a format
-    # change, which would take the whole block out.
     if not any(g["key"] == "session" for g in gauges):
+        if SESSION_LINE.search(text):
+            raise ValueError("unparsable session line in /usage output")
         gauges.insert(0, inactive_session(gauges[0]["tz"]))
     return gauges
 
 
 def unexpired(gauges, now):
-    """Cached gauges whose window is still open.
+    """Cached gauges still worth drawing.
 
-    A rolled-over window says nothing about the one now running: its percentage
-    belongs to a window that no longer exists, and its countdown reads "now"
-    forever. Better to show nothing for it than yesterday's number.
+    A rolled-over window's percentage belongs to a window that no longer exists,
+    and its countdown reads "now" forever. An inactive session has no window to
+    roll over, so it survives on the same terms as every other cached value.
     """
-    return [g for g in gauges if g.get("resetsAt") and g["resetsAt"] > now]
+    return [g for g in gauges
+            if g.get("inactive") or (g.get("resetsAt") and g["resetsAt"] > now)]
 
 
 def read_gauges():

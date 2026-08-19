@@ -74,9 +74,8 @@ and prints one JSON object:
 The widget runs it on the configured interval (5 minutes by default)
 and re-renders the countdowns and pace ticks every 30 seconds from the last
 reading. Readings are cached to `~/.cache/claude-usage.json`; if a probe fails,
-the widget dims and keeps showing the last good values rather than going blank
--- minus any window that has since reset, whose percentage belongs to a window
-that no longer exists.
+the widget dims and keeps showing the last good values rather than going blank,
+minus any window that has since reset.
 
 ### Known limits
 

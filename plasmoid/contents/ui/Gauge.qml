@@ -13,9 +13,11 @@ ColumnLayout {
     property real secondsLeft: 0
     property bool captions: true
     property bool loading: false
-    // No window is open: draws an empty ring and stands in for the countdown,
-    // which would otherwise read "now" against a reset time that never comes.
+    // No window is open; the countdown would otherwise read "now" forever.
     property bool inactive: false
+    // Overridable so a caller already dimming the whole widget does not dim this
+    // ring a second time, down to near-invisibility.
+    property real inactiveOpacity: 0.5
 
     property bool showCountdown: true
     property bool showLabel: true
@@ -35,7 +37,7 @@ ColumnLayout {
     spacing: 0
     // Dimmed alone rather than dimming the whole widget: the reading is
     // current, it is the window that is absent.
-    opacity: inactive ? 0.5 : 1
+    opacity: inactive ? inactiveOpacity : 1
 
     // Pace-relative: 79% is fine six days into a week, alarming six hours in.
     readonly property real delta: pct / 100 - Math.min(1, pace)
