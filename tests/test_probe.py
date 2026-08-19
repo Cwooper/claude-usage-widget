@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """Tests for the probe's parsing and aggregation."""
 
+import contextlib
 import importlib.machinery
 import importlib.util
+import io
+import json
+import tempfile
+import time
 import unittest
+import unittest.mock
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -30,6 +36,14 @@ What's contributing to your limits usage?
 Last 24h · 148 requests · 3 sessions
   99% of your usage came from subagent-heavy sessions
 """
+
+
+def weekly_only():
+    """USAGE_SAMPLE as printed while no session is open."""
+    return "\n".join(
+        line for line in USAGE_SAMPLE.splitlines()
+        if not line.startswith("Current session")
+    )
 
 
 class ParseResetTest(unittest.TestCase):
@@ -134,13 +148,52 @@ class ParseUsageTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             probe.parse_usage("Claude Code is not authenticated.", self.now)
 
-    def test_raises_when_only_the_session_line_is_missing(self):
-        weekly_only = "\n".join(
-            line for line in USAGE_SAMPLE.splitlines()
-            if not line.startswith("Current session")
-        )
+    def test_substitutes_an_inactive_session_when_its_line_is_missing(self):
+        gauges = probe.parse_usage(weekly_only(), self.now)
+        self.assertEqual([g["key"] for g in gauges], ["session", "week", "fable"])
+        session = gauges[0]
+        self.assertTrue(session["inactive"])
+        self.assertEqual(session["pct"], 0)
+        self.assertIsNone(session["resetsAt"])
+        self.assertEqual(session["tz"], "Atlantic/Reykjavik")
+
+    def test_keeps_the_weekly_gauges_without_a_session_line(self):
+        by_key = {g["key"]: g for g in probe.parse_usage(weekly_only(), self.now)}
+        self.assertEqual(by_key["week"]["pct"], 79)
+        self.assertEqual(by_key["fable"]["pct"], 72)
+
+    def test_raises_when_the_session_line_is_present_but_unparsable(self):
+        """A stamp format change must not pass for an idle session."""
+        drifted = USAGE_SAMPLE.replace(
+            "resets Aug 17, 12:20am (Atlantic/Reykjavik)", "resets in 2h 40m", 1)
         with self.assertRaises(ValueError):
-            probe.parse_usage(weekly_only, self.now)
+            probe.parse_usage(drifted, self.now)
+
+    def test_scopes_the_model_window_without_a_session_line(self):
+        """The synthesized gauge carries no reset time for window_start to read."""
+        gauges = probe.parse_usage(weekly_only(), self.now)
+        self.assertEqual(probe.window_start(gauges), date(2026, 8, 10))
+
+
+class UnexpiredTest(unittest.TestCase):
+    def setUp(self):
+        self.now = 1_000_000
+
+    def test_keeps_windows_still_open(self):
+        gauges = [{"key": "week", "resetsAt": self.now + 60}]
+        self.assertEqual(probe.unexpired(gauges, self.now), gauges)
+
+    def test_drops_windows_that_have_reset(self):
+        gauges = [
+            {"key": "session", "resetsAt": self.now - 1},
+            {"key": "week", "resetsAt": self.now + 60},
+        ]
+        self.assertEqual([g["key"] for g in probe.unexpired(gauges, self.now)], ["week"])
+
+    def test_keeps_an_inactive_session(self):
+        """It has no window to have rolled over, so nothing dates it."""
+        session = probe.inactive_session("UTC")
+        self.assertEqual(probe.unexpired([session], self.now), [session])
 
 
 class ClaudeBreakdownsTest(unittest.TestCase):
@@ -268,6 +321,49 @@ class WindowStartTest(unittest.TestCase):
                    "resetsAt": (now + timedelta(hours=1)).timestamp(),
                    "windowSeconds": 5 * 3600}]
         self.assertEqual(probe.window_start(gauges, now), date(2026, 8, 10))
+
+
+class FallbackTest(unittest.TestCase):
+    """main()'s degraded path, which the cache file is the only record of."""
+
+    @staticmethod
+    def unavailable(*args, **kwargs):
+        raise RuntimeError("claude: command not found")
+
+    def setUp(self):
+        cache = Path(tempfile.mkdtemp()) / "claude-usage.json"
+        patch = unittest.mock.patch.multiple(
+            probe, CACHE=str(cache), run=self.unavailable)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def probe_output(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            probe.main()
+        return json.loads(buf.getvalue())
+
+    def test_drops_cached_windows_that_have_since_reset(self):
+        now = time.time()
+        probe.save_cache({
+            "gauges": [
+                {"key": "session", "pct": 100, "resetsAt": now - 60},
+                {"key": "week", "pct": 39, "resetsAt": now + 86400},
+            ],
+            "models": [{"name": "opus", "tokens": 5}],
+            "modelsTs": now,
+        })
+        result = self.probe_output()
+        self.assertEqual([g["key"] for g in result["gauges"]], ["week"])
+        self.assertTrue(result["stale"])
+
+    def test_keeps_a_cached_inactive_session(self):
+        probe.save_cache({
+            "gauges": [probe.inactive_session("UTC")],
+            "models": [], "modelsTs": time.time(),
+        })
+        result = self.probe_output()
+        self.assertEqual([g["key"] for g in result["gauges"]], ["session"])
 
 
 if __name__ == "__main__":

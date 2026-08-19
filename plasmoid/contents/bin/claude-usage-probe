@@ -37,6 +37,11 @@ WINDOW_SECONDS = {"session": 5 * 3600, "week": 7 * 86400}
 # Fixed order so the model bar does not reshuffle its segments between polls.
 FAMILIES = ("fable", "opus", "sonnet", "haiku")
 
+# Whether /usage mentioned a session window at all. It omits the line between
+# sessions, so its absence is a state; a line USAGE_LINE cannot match is a
+# format change wearing that state's clothes.
+SESSION_LINE = re.compile(r"^\s*Current\s+session\b", re.I | re.M)
+
 USAGE_LINE = re.compile(
     r"Current\s+(session|week)\s*(?:\(([^)]*)\))?\s*:\s*"
     r"(\d+)%\s*used.*?resets\s+"
@@ -112,6 +117,18 @@ def gauge_key(kind, qualifier):
     return qualifier.strip().lower()
 
 
+def inactive_session(tzname):
+    """Stand-in for the session line /usage omits while no session is open."""
+    return {
+        "key": "session",
+        "pct": 0,
+        "resetsAt": None,
+        "windowSeconds": WINDOW_SECONDS["session"],
+        "tz": tzname,
+        "inactive": True,
+    }
+
+
 def parse_usage(text, now=None):
     """Gauge dicts from the text `claude -p /usage` prints."""
     gauges = []
@@ -128,11 +145,22 @@ def parse_usage(text, now=None):
         )
     if not gauges:
         raise ValueError("no usage lines in /usage output")
-    # A format change touching only the session line would otherwise drop the
-    # window that actually stops work, with the payload still reporting healthy.
     if not any(g["key"] == "session" for g in gauges):
-        raise ValueError("no session gauge in /usage output")
+        if SESSION_LINE.search(text):
+            raise ValueError("unparsable session line in /usage output")
+        gauges.insert(0, inactive_session(gauges[0]["tz"]))
     return gauges
+
+
+def unexpired(gauges, now):
+    """Cached gauges still worth drawing.
+
+    A rolled-over window's percentage belongs to a window that no longer exists,
+    and its countdown reads "now" forever. An inactive session has no window to
+    roll over, so it survives on the same terms as every other cached value.
+    """
+    return [g for g in gauges
+            if g.get("inactive") or (g.get("resetsAt") and g["resetsAt"] > now)]
 
 
 def read_gauges():
@@ -238,7 +266,7 @@ def main():
         result["gauges"] = read_gauges()
         fresh_gauges = result["gauges"]
     except Exception as exc:
-        result["gauges"] = cached.get("gauges", [])
+        result["gauges"] = unexpired(cached.get("gauges", []), result["ts"])
         # Cached reset times may be days stale, which would scope the model mix
         # to a window that has since rolled over.
         fresh_gauges = []

@@ -12,7 +12,12 @@ ColumnLayout {
     property real pace: 0
     property real secondsLeft: 0
     property bool captions: true
-    property bool idle: false
+    property bool loading: false
+    // No window is open; the countdown would otherwise read "now" forever.
+    property bool inactive: false
+    // Overridable so a caller already dimming the whole widget does not dim this
+    // ring a second time, down to near-invisibility.
+    property real inactiveOpacity: 0.5
 
     property bool showCountdown: true
     property bool showLabel: true
@@ -30,6 +35,9 @@ ColumnLayout {
     property real overThreshold: 0.15
 
     spacing: 0
+    // Dimmed alone rather than dimming the whole widget: the reading is
+    // current, it is the window that is absent.
+    opacity: inactive ? inactiveOpacity : 1
 
     // Pace-relative: 79% is fine six days into a week, alarming six hours in.
     readonly property real delta: pct / 100 - Math.min(1, pace)
@@ -71,7 +79,7 @@ ColumnLayout {
         Canvas {
             id: canvas
             anchors.fill: parent
-            visible: !root.idle
+            visible: !root.loading
             antialiasing: true
 
             onPaint: {
@@ -103,7 +111,7 @@ ColumnLayout {
                     ctx.stroke();
                 }
 
-                if (!root.showTick) {
+                if (!root.showTick || root.inactive) {
                     return;
                 }
 
@@ -135,7 +143,8 @@ ColumnLayout {
                 function onTickColorChanged() { canvas.requestPaint(); }
                 function onShowTickChanged() { canvas.requestPaint(); }
                 function onThicknessChanged() { canvas.requestPaint(); }
-                function onIdleChanged() { canvas.requestPaint(); }
+                function onLoadingChanged() { canvas.requestPaint(); }
+                function onInactiveChanged() { canvas.requestPaint(); }
                 function onTrackColorChanged() { canvas.requestPaint(); }
                 function onOutlineColorChanged() { canvas.requestPaint(); }
             }
@@ -144,7 +153,7 @@ ColumnLayout {
         Canvas {
             id: spinner
             anchors.fill: parent
-            visible: root.idle
+            visible: root.loading
             antialiasing: true
 
             onPaint: {
@@ -173,7 +182,7 @@ ColumnLayout {
 
             // Rotating the item is GPU-side; repainting the arc each frame is not.
             RotationAnimator on rotation {
-                running: root.idle
+                running: root.loading
                 loops: Animation.Infinite
                 from: 0
                 to: 360
@@ -198,7 +207,7 @@ ColumnLayout {
             PlasmaComponents.Label {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
-                visible: !root.idle
+                visible: !root.loading
                 text: Math.round(root.pct)
                 color: root.valueColor
                 font.pixelSize: Math.max(9, ring.size * 0.33)
@@ -209,8 +218,9 @@ ColumnLayout {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
                 // Drops out on the compact panel ring, where it would be illegible.
-                visible: !root.idle && root.captions && root.showCountdown && ring.size >= 40
-                text: Formatter.duration(root.secondsLeft, ring.size < 96)
+                visible: !root.loading && root.captions && root.showCountdown && ring.size >= 40
+                text: root.inactive ? i18n("idle")
+                                    : Formatter.duration(root.secondsLeft, ring.size < 96)
                 opacity: 0.55
                 font.pixelSize: Math.max(8, ring.size * 0.13)
                 fontSizeMode: Text.HorizontalFit

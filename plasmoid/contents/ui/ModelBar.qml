@@ -33,7 +33,7 @@ Item {
         return Qt.darker(baseColor, 1.6 - rank * 0.3);
     }
 
-    property bool idle: false
+    property bool loading: false
     property int barHeight: Kirigami.Units.gridUnit
 
     implicitHeight: barHeight
@@ -41,14 +41,14 @@ Item {
     Rectangle {
         anchors.fill: parent
         color: Qt.alpha(Kirigami.Theme.textColor, 0.12)
-        visible: root.idle || root.total <= 0
+        visible: root.loading || root.total <= 0
         clip: true
 
         Rectangle {
             id: shimmer
             width: parent.width * 0.28
             height: parent.height
-            visible: root.idle
+            visible: root.loading
             color: Qt.alpha(Kirigami.Theme.highlightColor, 0.55)
 
             // Animating a normalised progress and deriving x from it, rather
@@ -58,7 +58,7 @@ Item {
             x: -width + progress * (root.width + width)
 
             NumberAnimation on progress {
-                running: root.idle
+                running: root.loading
                 loops: Animation.Infinite
                 from: 0
                 to: 1
@@ -73,7 +73,7 @@ Item {
     Row {
         id: segments
         anchors.fill: parent
-        visible: !root.idle && root.total > 0
+        visible: !root.loading && root.total > 0
 
         Repeater {
             model: root.models
